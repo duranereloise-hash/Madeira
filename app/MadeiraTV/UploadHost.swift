@@ -133,15 +133,49 @@ final class UploadHost: ObservableObject {
             respond(conn, status: 200, contentType: "application/json", body: Self.gamesJSON())
         } else if method == "POST", target.hasPrefix("/upload") {
             handleUpload(conn, body: body, bodyLength: bodyLength, target: target)
+        } else if method == "POST", target.hasPrefix("/pairing") {
+            handlePairingUpload(conn, body: body, bodyLength: bodyLength)
         } else {
             respond(conn, status: 404, body: "Not found")
+        }
+    }
+
+    /// POST /pairing — save the StikJIT pairing file
+    /// (Documents/StikJIT/pairingFile.plist). Lets users push the pairing
+    /// file over the network instead of AFC/Finder.
+    private func handlePairingUpload(_ conn: NWConnection, body: Data, bodyLength: Int) {
+        guard body.count >= bodyLength else {
+            receiveMoreForUpload(conn, body: body, bodyLength: bodyLength, target: "/pairing") { data in
+                self.savePairingFile(data) { result in
+                    self.respond(conn, status: 200, contentType: "text/plain", body: result)
+                }
+            }
+            return
+        }
+        savePairingFile(body.prefix(bodyLength)) { result in
+            self.respond(conn, status: 200, contentType: "text/plain", body: result)
+        }
+    }
+
+    private func savePairingFile(_ data: Data, completion: @escaping (String) -> Void) {
+        let dir = StikJITCoordinator.pairingFileURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try data.write(to: StikJITCoordinator.pairingFileURL, options: .atomic)
+            completion("Pairing file saved (\(data.count) bytes). Built-in StikJIT is now ready.\n")
+        } catch {
+            completion("Failed to save pairing file: \(error.localizedDescription)\n")
         }
     }
 
     private func handleUpload(_ conn: NWConnection, body: Data, bodyLength: Int, target: String) {
         // If the body hasn't fully arrived yet, keep receiving until Content-Length.
         guard body.count >= bodyLength else {
-            receiveMoreForUpload(conn, body: body, bodyLength: bodyLength, target: target)
+            receiveMoreForUpload(conn, body: body, bodyLength: bodyLength, target: target) { data in
+                self.saveUpload(data, target: target) { result in
+                    self.respond(conn, status: 200, contentType: "text/plain", body: result)
+                }
+            }
             return
         }
         saveUpload(body.prefix(bodyLength), target: target) { result in
@@ -149,19 +183,19 @@ final class UploadHost: ObservableObject {
         }
     }
 
-    private func receiveMoreForUpload(_ conn: NWConnection, body: Data, bodyLength: Int, target: String) {
+    private func receiveMoreForUpload(_ conn: NWConnection, body: Data, bodyLength: Int, target: String,
+                                      completion: @escaping (Data) -> Void) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { [weak self] data, _, _, error in
             guard let self else { return }
             var acc = body
             if let data, !data.isEmpty { acc.append(data) }
             if acc.count >= bodyLength {
-                self.saveUpload(acc.prefix(bodyLength), target: target) { result in
-                    self.respond(conn, status: 200, contentType: "text/plain", body: result)
-                }
+                completion(acc.prefix(bodyLength))
             } else if error != nil {
                 conn.cancel()
             } else {
-                self.receiveMoreForUpload(conn, body: acc, bodyLength: bodyLength, target: target)
+                self.receiveMoreForUpload(conn, body: acc, bodyLength: bodyLength, target: target,
+                                          completion: completion)
             }
         }
     }

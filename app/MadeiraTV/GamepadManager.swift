@@ -63,21 +63,44 @@ final class GamepadManager {
     }
 
     @objc private func controllerDisconnected(_ n: Notification) {
-        if let c = n.object as? GCController {
-            if keyboardController === c { keyboardController = nil }
-            if mouseController === c { mouseController = nil }
+        guard let c = n.object as? GCController else { return }
+
+        // If a controller that currently holds keys disconnects, Wine would
+        // keep the keys pressed forever. Release everything it could have
+        // held before dropping it.
+        if keyboardController === c || mouseController === c {
+            releaseAll()
         }
+        if keyboardController === c { keyboardController = nil }
+        if mouseController === c { mouseController = nil }
         connectedCount = GCController.controllers().count
         onConnectionChange?()
+    }
+
+    /// Release every key we may have pressed. Called on controller
+    /// disconnect so a pad that vanishes mid-game never leaves Wine with a
+    /// stuck button.
+    private func releaseAll() {
+        for (vk, down) in keyStates where down {
+            winios_post_key(vk, 0)
+        }
+        keyStates.removeAll()
+        leftTriggerDown = false
+        rightTriggerDown = false
+        mouseInited = false
     }
 
     private func bind(_ c: GCController) {
         guard let pad = c.extendedGamepad else { return }
 
-        // First pad = keyboard layer, second pad = mouse layer (kept simple
-        // for the MVP; a dedicated mapping screen can come later).
-        if keyboardController == nil { keyboardController = c }
-        else if mouseController == nil { mouseController = c }
+        // Assign roles: first pad = keyboard layer, second = mouse layer.
+        // Remaining pads are ignored (kept simple; a mapping screen can
+        // come later).
+        if keyboardController == nil {
+            keyboardController = c
+        } else if mouseController == nil {
+            mouseController = c
+        }
 
         pad.valueChangedHandler = { [weak self] _, _ in
             self?.poll(pad)
@@ -95,24 +118,19 @@ final class GamepadManager {
         if c === mouseController {
             pollMouse(pad)
         }
-        // Fallback: a controller that is neither gets keyboard layer too.
-        if c !== keyboardController && c !== mouseController {
-            pollKeyboard(pad)
-        }
     }
 
     // MARK: Keyboard layer
 
     private func pollKeyboard(_ pad: GCExtendedGamepad) {
-        // Left stick / D-pad → arrows. AValue 0.25 dead zone; 8-way snap is
-        // intentionally NOT used here — analogue push gives smoother walking
-        // in games that read arrow keys as held keys.
+        // Left stick / D-pad → arrows. 0.25 dead zone; analogue push gives
+        // smoother walking in games that read arrow keys as held keys.
         let x = pad.leftThumbstick.xAxis.value
         let y = pad.leftThumbstick.yAxis.value
         let dx = pad.dpad.xAxis.value
         let dy = pad.dpad.yAxis.value
 
-        setKey(vkLeft, pad.leftThumbstick.xAxis.value < -deadZone || pad.dpad.xAxis.value < -0.5)
+        setKey(vkLeft, x < -deadZone || dx < -0.5)
         setKey(vkRight, x > deadZone || dx > 0.5)
         setKey(vkUp, y > deadZone || dy > 0.5)      // GC y up = "up"
         setKey(vkDown, y < -deadZone || dy < -0.5)

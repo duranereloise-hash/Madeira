@@ -56,10 +56,12 @@ MadeiraTV/MadeiraTVApp.swift
 MadeiraTV/Models.swift
 MadeiraTV/LibraryView.swift
 MadeiraTV/TVRunner.swift
+MadeiraTV/TVMetalHostView.swift
 MadeiraTV/TVJIT.swift
 MadeiraTV/GamepadManager.swift
 MadeiraTV/UploadHost.swift
 MadeiraTV/URLHandler.swift
+MadeiraTV/StikJITCoordinator.swift
 ```
 
 Do NOT compile `Madeira/ContentView.swift` and `Madeira/StikJITHelper.swift`

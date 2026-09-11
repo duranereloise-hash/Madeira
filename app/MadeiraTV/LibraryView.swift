@@ -244,13 +244,24 @@ struct ServicesView: View {
                     .padding(.vertical, 10)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.14)))
             }
-            Text("Games are saved to Documents/Games and appear in the "
-                 + "library automatically. You can also open a game on Apple TV "
-                 + "from another app with madeira://launch/<game>")
+Text("Games are saved to Documents/Games and appear in the "
+             + "library automatically. You can also open a game on Apple TV "
+             + "from another app with madeira://launch/<game>")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 700)
+            // Built-in StikJIT pairing status — quick glance before launch.
+            HStack(spacing: 10) {
+                Image(systemName: "key.fill")
+                Text("StikJIT pairing: " + (StikJITCoordinator.hasPairingFile
+                     ? "present" : "missing — POST /pairing or copy to Documents/StikJIT"))
+            }
+            .font(.system(.subheadline, design: .monospaced))
+            .foregroundStyle(StikJITCoordinator.hasPairingFile ? .green : .orange)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.12)))
             Button("Done") { dismiss() }
                 .buttonStyle(.borderedProminent)
                 .padding(.top, 12)

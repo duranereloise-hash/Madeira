@@ -32,7 +32,12 @@ struct TVRunner: View {
                 }
             }
         }
-        .onAppear { launch() }
+        .onAppear {
+            // Put the Metal layer on screen BEFORE Wine starts so the first
+            // present has somewhere to land (same ordering as the iOS app).
+            TVMetalHostView.attach()
+            launch()
+        }
         .onExitCommand { stop() }
         .navigationBarBackButtonHidden(true)
     }
@@ -45,8 +50,8 @@ struct TVRunner: View {
         jit.refresh()
 
         // The ladder in TVJIT.acquire() decides HOW to get the pool:
-        // entitlement → MAP_JIT under a debugger → StikDebug BRK. It is
-        // cached for the process lifetime, so subsequent launches are free.
+        // entitlement → MAP_JIT under a debugger → StikDebug BRK → built-in
+        // StikJIT. It is cached for the process lifetime.
         if let p = TVJIT.current {
             apply(pool: p)
             return
@@ -96,9 +101,12 @@ struct TVRunner: View {
         }
         guard wrc == 0 else { return }
 
-        // Wait for first present (or cap), then detach the debugger like iOS.
-        // Detach is only meaningful for a debugger-backed pool; skip it when
-        // the pool came from the entitlement (no debugger involved at all).
+        // Wait for first present (or cap). The universal script (external
+        // StikDebug or built-in StikJIT) both end with their own detach —
+        // jit26_detach() (BRK #0xf00d, x16=0) tells the attached script to
+        // send `D` to the debug server. Only script-backed pools have that;
+        // for entitlement/MAP_JIT there is no script, so the BRK would just
+        // stop the process (or crash) — skip it.
         let pollStart = CFAbsoluteTimeGetCurrent()
         var presentingSince: CFAbsoluteTime?
         while wine_process_is_running() != 0 {
@@ -106,12 +114,12 @@ struct TVRunner: View {
             let now = CFAbsoluteTimeGetCurrent()
             if presentingSince == nil, madeira_get_present_count() >= 1 {
                 presentingSince = now
-                DispatchQueue.main.async { phase = "Presenting — detaching in 20s" }
+                DispatchQueue.main.async { phase = "Presenting — settling…" }
             }
             if let t = presentingSince, now - t > 20.0 { break }
             if now - pollStart > 1200.0 { break }
         }
-        if TVJIT.current?.method != .entitlement {
+        if let method = TVJIT.current?.method, method == .brk || method == .builtInStikJIT {
             TVJIT.detach()
         }
         DispatchQueue.main.async {
@@ -122,6 +130,7 @@ struct TVRunner: View {
     }
 
     private func stop() {
+        TVMetalHostView.detach()   // hide the game surface, back to the menu
         guard running || poolReady else {
             dismiss()
             return

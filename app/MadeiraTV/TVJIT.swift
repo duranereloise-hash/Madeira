@@ -5,7 +5,8 @@ import UIKit
 enum JITMethod: String {
     case entitlement          // allow-jit entitlement — no debugger at all
     case mapJit = "MAP_JIT"   // MAP_JIT under a generic debugger (Xcode/remote JIT)
-    case brk = "StikDebug"    // StikDebug BRK #0xf00d protocol
+    case brk = "StikDebug"    // StikDebug BRK #0xf00d protocol (external app)
+    case builtInStikJIT = "StikJIT"  // built-in StikJIT helper extension
 }
 
 struct JITPool {
@@ -16,18 +17,20 @@ struct JITPool {
 }
 
 /// JIT acquisition ladder for tvOS 26. Tries every realistic way to get
-/// executable memory. The pool, once acquired, is cached for the process
-/// lifetime (same as iOS): a later launch reuses it, and after a debugger
-/// detaches no new executable pages can be made anyway.
+/// executable memory, first success wins; the pool is cached for the
+/// process lifetime (same as iOS).
 ///
-/// Ladder (all optional, first success wins):
+/// Ladder:
 ///   1. allow-jit entitlement    — paid dev account / TrollStore. No debugger.
 ///   2. MAP_JIT under ANY debugger — Xcode attach / remote JIT server.
-///   3. StikDebug BRK #0xf00d (universal script) — our JITAllocator.c already
-///      implements this protocol, so the app is compatible out of the box.
-///   4. Built-in StikJIT (Rust XCFramework) launched from the helper
-///      extension — fully in-app, no external app needed. See
-///      StikJITCoordinator in TVRunner.
+///   3. StikDebug BRK #0xf00d (universal script) — JITAllocator.c already
+///      implements this protocol.
+///   4. Built-in StikJIT — the StikJITTV helper extension attaches its own
+///      debug server over the RSD tunnel, then the same BRK protocol is
+///      used to prepare the pool. No external app needed.
+///
+/// `madeira.jitMethod` (UserDefaults) overrides with: entitlement, mapjit,
+/// stik, stikjit (default = auto ladder).
 final class TVJIT {
 
     static let defaultPoolMB = 896
@@ -48,8 +51,6 @@ final class TVJIT {
         UserDefaults.standard.bool(forKey: "madeira.jitAllowBRK")
     }
 
-    /// Allow the built-in StikJIT path (requires the helper extension to be
-    /// linked in, a pairing file, Developer Mode and LocalDevVPN on the box).
     static var allowBuiltIn: Bool {
         UserDefaults.standard.bool(forKey: "madeira.jitAllowBuiltIn")
     }
@@ -58,8 +59,11 @@ final class TVJIT {
         if let p = current { return p }
         let override = methodOverride
 
-        func attempt(_ viaMapJIT: Bool, _ method: JITMethod) -> JITPool? {
-            guard let rxAddr = allocateRX(poolSize, viaMapJIT: viaMapJIT) else { return nil }
+        func shouldTry(_ m: String) -> Bool {
+            override == nil || override == m
+        }
+
+        func makePool(_ rxAddr: vm_address_t, _ method: JITMethod) -> JITPool? {
             guard let rw = attachRWAlias(rxAddr: rxAddr, size: poolSize) else {
                 vm_deallocate(mach_task_self_, rxAddr, vm_size_t(poolSize))
                 return nil
@@ -67,48 +71,60 @@ final class TVJIT {
             let rx = UnsafeMutableRawPointer(bitPattern: rxAddr)!
             let rwm = UnsafeMutableRawPointer(bitPattern: rw.rwAddr)!
             _ = jit_make_region_no_footprint(rwm, poolSize, "pool-RW-tv")
-            current = JITPool(rx: rx, rw: rwm, size: poolSize, method: method)
-            return current
+            let pool = JITPool(rx: rx, rw: rwm, size: poolSize, method: method)
+            current = pool
+            return pool
         }
 
-        // 1. Entitlement (paid account / TrollStore): no debugger needed.
-        if override == nil || override == "entitlement" {
-            if checkAppEntitlement("com.apple.security.cs.allow-jit") {
-                if let p = attempt(true, .entitlement) { return p }
-            }
+        // 1. Entitlement: no debugger at all.
+        if shouldTry("entitlement"), checkAppEntitlement("com.apple.security.cs.allow-jit"),
+           let addr = allocateRX(poolSize, viaMapJIT: true),
+           let p = makePool(addr, .entitlement) {
+            return p
+        }
+        if override == "entitlement" {
             lastFailure = "No allow-jit entitlement (paid Apple Developer account or TrollStore)"
-            if override == "entitlement" { return nil }
+            return nil
         }
 
-        // 2. MAP_JIT under a generic debugger.
-        if override == nil || override == "mapjit" {
-            if jit_check_debugged() {
-                if let p = attempt(true, .mapJit) { return p }
-                lastFailure = "MAP_JIT refused by the kernel under this debugger"
+        // 2. MAP_JIT under any attached debugger.
+        if shouldTry("mapjit"), jit_check_debugged(),
+           let addr = allocateRX(poolSize, viaMapJIT: true),
+           let p = makePool(addr, .mapJit) {
+            return p
+        }
+        if override == "mapjit" {
+            lastFailure = jit_check_debugged()
+                ? "MAP_JIT refused by the kernel under this debugger"
+                : "No debugger attached (CS_DEBUGGED unset)"
+            return nil
+        }
+
+        // 3. StikDebug BRK protocol (external app; opt-in).
+        if shouldTry("stik"), allowBRK, jit_check_debugged(),
+           let addr = allocateRX(poolSize, viaMapJIT: false),
+           let p = makePool(addr, .brk) {
+            return p
+        }
+        if override == "stik" {
+            lastFailure = "StikDebug BRK failed or not enabled (madeira.jitAllowBRK=1 needed)"
+            return nil
+        }
+
+        // 4. Built-in StikJIT: helper attaches its debug server, then the
+        //    same BRK protocol prepares the pool.
+        if shouldTry("stikjit"), allowBuiltIn {
+            if StikJITCoordinator.shared.enableBuiltIn(),
+               let addr = allocateRX(poolSize, viaMapJIT: false),
+               let p = makePool(addr, .builtInStikJIT) {
+                return p
             }
-            if override == "mapjit" { return nil }
-        }
-
-        // 3. StikDebug BRK protocol (opt-in — unsafe under other debuggers).
-        if override == "stik" || (override == nil && allowBRK) {
-            if jit_check_debugged(), let p = attempt(false, .brk) { return p }
-            lastFailure = "StikDebug BRK protocol failed or no debugger attached"
-            if override == "stik" { return nil }
-        }
-
-        // 4. Built-in StikJIT (in-app, needs helper extension + pairing file).
-        if override == "stikjit" || (override == nil && allowBuiltIn) {
-            if let p = StikJITCoordinator.shared.acquirePool() { return p }
             lastFailure = "Built-in StikJIT failed: \(StikJITCoordinator.shared.lastError ?? "unknown")"
+            if override == "stikjit" { return nil }
         }
-        return nil
-    }
 
-    /// Try to release the cached pool (called on app teardown if ever needed).
-    static func discard() {
-        guard let p = current else { return }
-        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: p.rx), vm_size_t(p.size))
-        current = nil
+        lastFailure = "No JIT source available (entitlement, debugger, StikDebug or built-in StikJIT)"
+        return nil
     }
 
     static func detach() {
@@ -117,9 +133,9 @@ final class TVJIT {
 
     // MARK: - Pool building
 
-    /// RX region: either vm_allocate(VM_FLAGS_MAP_JIT) or the StikDebug
-    /// BRK protocol. Placement is checked against FEX's position-dependent
-    /// emit threshold (0x119000000) and the guest 64G window [0x70,0x80)G.
+    /// RX region: vm_allocate(VM_FLAGS_MAP_JIT) or the StikDebug BRK
+    /// protocol. Placement is checked against FEX's position-dependent emit
+    /// threshold (0x119000000) and the guest 64G window [0x70,0x80)G.
     private static func allocateRX(_ size: Int, viaMapJIT: Bool) -> vm_address_t? {
         pinLowMemory()
         let goodLow = 0x119000000
@@ -157,8 +173,7 @@ final class TVJIT {
         }
     }
 
-    /// Non-executable RW alias over the RX region (W^X: write via RW, exec
-    /// via RX). No JIT flags needed on the alias — it never executes.
+    /// Non-executable RW alias over the RX region (W^X).
     private static func attachRWAlias(rxAddr: vm_address_t, size: Int) -> RawPool? {
         var rwAddr: vm_address_t = 0
         var cur: vm_prot_t = 0
