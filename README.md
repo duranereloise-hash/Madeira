@@ -40,6 +40,36 @@ git clone --recurse-submodules <this repo>
 Note that `FEX`, `wine` and `research/dxmt` are submodules pointing at forks
 containing the iOS work; upstream clones will not build here.
 
+## tvOS (Apple TV)
+
+The same emulation stack (Wine/ARM64EC + FEX + DXMT) also targets **tvOS 26**
+on Apple TV via the `MadeiraTV` target in `app/MadeiraTV/`:
+
+- **Focus-based menu** — game library grid driven by the tvOS focus engine
+  (Siri Remote / gamepad), "Now Playing" hero, services screen.
+- **Gamepad first** — `GamepadManager` maps `GCController` (Siri Remote,
+  DualShock/DualSense, Xbox) onto the Wine input bridge: sticks → arrow keys,
+  face buttons → Enter/Esc/Space/Tab, right stick → mouse-look, triggers →
+  mouse buttons. Wine's XInput is not wired yet, so this is the keyboard/mouse
+  layer that works today.
+- **Upload games over the network (RetroArch-style)** — built-in HTTP server
+  (`UploadHost`) on `http://<apple-tv>:8080`: `POST /upload` for .exe files,
+  `GET /games` for the list, `POST /pairing` for the StikJIT pairing file.
+- **Deep link** — `madeira://launch/<game>` opens a game from another app.
+- **JIT acquisition ladder** (`TVJIT`) — tries, in order: allow-jit
+  entitlement → MAP_JIT under a debugger → StikDebug BRK `#0xf00d` → built-in
+  StikJIT via the `MadeiraTVHelper` app extension (links StikJITTV; the
+  two-process flow from StikJIT's INTEGRATION.md). The pool is cached.
+- **Rendering** — `TVMetalHostView` registers the window-level CAMetalLayer
+  with DXMT via `madeira_display_set_layer`, aspect-fitted to the TV.
+
+Setup on Apple TV mirrors iOS: sideload with a method that preserves
+`get-task-allow` (SideStore/Sideloadly), Developer Mode + a pairing file for
+built-in JIT, or launch from StikDebug.
+
+See [`app/MadeiraTV/BUILDING.md`](app/MadeiraTV/BUILDING.md) for the tvOS
+target, and [`PORT_PLAN.md`](PORT_PLAN.md) for the full port design.
+
 ## License
 
 **GPL-3.0-or-later** — see [`LICENSE`](LICENSE). Derivatives that are
