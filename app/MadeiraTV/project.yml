@@ -17,7 +17,7 @@ targets:
     platform: tvOS
     deploymentTarget: "18.0"
     sources:
-      # Common engine sources (shared with iOS app) — sibling of this folder
+      # Common engine sources (shared with iOS app) - sibling of this folder
       - path: ../Madeira
         buildPhase: sources
         excludes:
@@ -28,7 +28,7 @@ targets:
           - "Madeira.entitlements"
           - "Madeira-Bridging-Header.h"
           - "prefix-template.tar.gz"
-      # tvOS app sources — this folder
+      # tvOS app sources - this folder
       - path: .
         buildPhase: sources
         excludes:
@@ -40,12 +40,16 @@ targets:
       # Resources
       - path: ../Madeira/aarch64-windows
         buildPhase: resources
+        type: folder
       - path: ../Madeira/arm64ec-windows
         buildPhase: resources
+        type: folder
       - path: ../Madeira/nls
         buildPhase: resources
+        type: folder
       - path: ../Madeira/legal
         buildPhase: resources
+        type: folder
       - path: ../Madeira/cacert.pem
         buildPhase: resources
       - path: ../Madeira/prefix-template.tar.gz
