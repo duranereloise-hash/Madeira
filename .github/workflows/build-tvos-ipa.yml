@@ -35,8 +35,8 @@ jobs:
 
       - name: Generate Xcode project
         run: |
-          cd app
-          xcodegen generate --spec MadeiraTV/project.yml
+          cd app/MadeiraTV
+          xcodegen generate --spec project.yml
 
       - name: xcodebuild MadeiraTV
         run: |

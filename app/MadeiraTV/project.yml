@@ -17,8 +17,9 @@ targets:
     platform: tvOS
     deploymentTarget: "18.0"
     sources:
-      # Common engine sources (shared with iOS app)
-      - path: Madeira
+      # Common engine sources (shared with iOS app) — sibling of this folder
+      - path: ../Madeira
+        buildPhase: sources
         excludes:
           - "MadeiraApp.swift"
           - "ContentView.swift"
@@ -26,26 +27,30 @@ targets:
           - "Info.plist"
           - "Madeira.entitlements"
           - "Madeira-Bridging-Header.h"
-      # tvOS app sources
-      - path: MadeiraTV
+          - "prefix-template.tar.gz"
+      # tvOS app sources — this folder
+      - path: .
+        buildPhase: sources
         excludes:
+          - "project.yml"
           - "Info.plist"
           - "MadeiraTV.entitlements"
           - "BUILDING.md"
+          - "Vendors"
       # Resources
-      - path: Madeira/aarch64-windows
+      - path: ../Madeira/aarch64-windows
         buildPhase: resources
-      - path: Madeira/arm64ec-windows
+      - path: ../Madeira/arm64ec-windows
         buildPhase: resources
-      - path: Madeira/x86_64-vcruntime
+      - path: ../Madeira/x86_64-vcruntime
         buildPhase: resources
-      - path: Madeira/nls
+      - path: ../Madeira/nls
         buildPhase: resources
-      - path: Madeira/legal
+      - path: ../Madeira/legal
         buildPhase: resources
-      - path: Madeira/cacert.pem
+      - path: ../Madeira/cacert.pem
         buildPhase: resources
-      - path: Madeira/prefix-template.tar.gz
+      - path: ../Madeira/prefix-template.tar.gz
         buildPhase: resources
     dependencies:
       - sdk: Metal.framework
@@ -62,32 +67,37 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.willfaust.madeira-tv
         PRODUCT_NAME: MadeiraTV
-        INFOPLIST_FILE: MadeiraTV/Info.plist
-        CODE_SIGN_ENTITLEMENTS: MadeiraTV/MadeiraTV.entitlements
-        SWIFT_OBJC_BRIDGING_HEADER: "Madeira/Madeira-Bridging-Header.h"
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: MadeiraTV.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: "../Madeira/Madeira-Bridging-Header.h"
         LIBRARY_SEARCH_PATHS:
-          - "$(SRCROOT)/Madeira"
+          - "$(inherited)"
+          - "$(SRCROOT)/../Madeira"
         OTHER_LDFLAGS:
           - "$(inherited)"
           - -force_load
-          - "$(SRCROOT)/Madeira/libgnutls.a"
+          - "$(SRCROOT)/../Madeira/libgnutls.a"
           - -force_load
-          - "$(SRCROOT)/Madeira/libhogweed.a"
+          - "$(SRCROOT)/../Madeira/libhogweed.a"
           - -force_load
-          - "$(SRCROOT)/Madeira/libnettle.a"
+          - "$(SRCROOT)/../Madeira/libnettle.a"
           - -force_load
-          - "$(SRCROOT)/Madeira/libgmp.a"
+          - "$(SRCROOT)/../Madeira/libgmp.a"
           - -force_load
-          - "$(SRCROOT)/libdxmt_unix.a"
+          - "$(SRCROOT)/../libdxmt_unix.a"
         HEADER_SEARCH_PATHS:
-          - "$(SRCROOT)/Madeira"
+          - "$(inherited)"
+          - "$(SRCROOT)/../Madeira"
 
   MadeiraTVHelper:
     type: app-extension
     platform: tvOS
     deploymentTarget: "18.0"
     sources:
-      - path: MadeiraTVHelper
+      - path: ../MadeiraTVHelper
+        buildPhase: sources
+        excludes:
+          - "Info.plist"
     dependencies:
       - sdk: Network.framework
       - framework: Vendors/StikJITTV.xcframework
@@ -96,5 +106,5 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.willfaust.madeira-tv.helper
         PRODUCT_NAME: MadeiraTVHelper
-        INFOPLIST_FILE: MadeiraTVHelper/Info.plist
-        SWIFT_OBJC_BRIDGING_HEADER: "Madeira/Madeira-Bridging-Header.h"
+        INFOPLIST_FILE: ../MadeiraTVHelper/Info.plist
+        SWIFT_OBJC_BRIDGING_HEADER: "../Madeira/Madeira-Bridging-Header.h"
