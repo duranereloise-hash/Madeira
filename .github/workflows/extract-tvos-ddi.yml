@@ -1,0 +1,94 @@
+name: Extract tvOS 27 DeveloperDiskImage
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extract-ddi:
+    name: Extract tvOS 27 DDI
+    runs-on: macos-15
+    timeout-minutes: 10
+
+    steps:
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Find tvOS DeviceSupport in Xcode
+        run: |
+          echo "=== Xcode path ==="
+          xcode-select -p
+          echo "=== tvOS DeviceSupport ==="
+          find /Applications/Xcode*.app -path "*/Platforms/AppleTVOS.platform/DeviceSupport" -type d
+          echo "=== tvOS DeveloperDiskImages (old format) ==="
+          find /Applications/Xcode*.app -path "*AppleTVOS*DeveloperDiskImage*" -type f 2>/dev/null
+          echo "=== CoreDevice DDIs ==="
+          find /Applications/Xcode*.app -path "*/CoreDevice/*DDI*" -type f 2>/dev/null | head -20
+          echo "=== DeveloperDiskImages root ==="
+          ls -la /Applications/Xcode*.app/Contents/Developer/Platforms/AppleTVOS.platform/DeviceSupport/ 2>/dev/null || echo "no DeviceSupport dir"
+          ls -d /Applications/Xcode*.app/Contents/Developer/Platforms/AppleTVOS.platform/DeviceSupport/*/ 2>/dev/null || echo "no versions"
+
+      - name: Find all DDI-related files for tvOS in Xcode bundle
+        run: |
+          XCODE=$(xcode-select -p | sed 's|/Contents/Developer||')
+          echo "Xcode root: $XCODE"
+          echo ""
+          echo "=== All tvOS DDI candidates ==="
+          find "$XCODE" -name "*.dmg" -path "*tv*OS*DDI*" -o -name "*.dmg" -path "*DDI*tv*" -o -name "*.trustcache" -path "*tv*" 2>/dev/null | head -40
+          echo ""
+          echo "=== Any DDI DMG files ==="
+          find "$XCODE" -name "DeveloperDiskImage*" -type f 2>/dev/null
+          echo ""
+          echo "=== DDI anywhere in Xcode ==="
+          find "$XCODE" \( -name "*.dmg" -o -name "*.trustcache" -o -name "*.cryptex_info" -o -name "*.root_hash" \) -path "*DDI*" 2>/dev/null | head -40
+          echo ""
+          echo "=== Look in /Library/Developer ==="
+          ls -la /Library/Developer/DeveloperDiskImages/ 2>/dev/null || echp "no /Library/Developer/DeveloperDiskImages"
+          ls -la /Library/Developer/DeveloperDiskImages/*/ 2>/dev/null || echo "no subdirs"
+          echo ""
+          echo "=== Xcode CoreDevice ==="
+          find "$XCODE" -path "*/CoreDevice/*" -type d 2>/dev/null | head -10
+          ls -la "$XCODE"/Contents/Developer/Platforms/AppleTVOS.platform/ 2>/dev/null | head -20
+
+      - name: Search for tvOS 27 build manifest
+        run: |
+          XCODE=$(xcode-select -p | sed 's|/Contents/Developer||')
+          echo "=== BuildManifest for tvOS ==="
+          find "$XCODE" -name "BuildManifest*" -path "*tv*" -exec sh -c 'echo "--- $1 ---"; head -100 "$1" | grep -i "ProductBuildVersion\|27A\|27B\|tvos\|tvOS\|DDI\|Personalized" || true' _ {} \; 2>/dev/null | head -60
+          echo ""
+          echo "=== Any PersonalizedImages ==="
+          find "$XCODE" -type d -name "*Personalized*" 2>/dev/null | head -10
+          echo ""
+          echo "=== Xcode internal DDI paths ==="
+          find "$XCODE" -name "version.plist" -path "*DDI*" 2>/dev/null | while read f; do echo "--- $f ---"; cat "$f" 2>/dev/null | head -30; done
+
+      - name: Package everything found
+        run: |
+          mkdir -p tvos27-ddi
+          XCODE=$(xcode-select -p | sed 's|/Contents/Developer||')
+          
+          find "$XCODE" -name "DeveloperDiskImage*" -type f 2>/dev/null | while read f; do
+            cp "$f" tvos27-ddi/ 2>/dev/null || echp "could not copy $f"
+          done
+          
+          find "$XCODE" \( -name "*.dmg" -o -name "*.trustcache" -o -name "*.cryptex_info" -o -name "*.root_hash" \) -path "*DDI*" 2>/dev/null | while read f; do
+            mkdir -p "tvos27-ddi/$(dirname "$f" | sed 's|/|_|g')"
+            cp "$f" "tvos27-ddi/$(dirname "$f" | sed 's|/|_|g')/" 2>/dev/null || echp "could not copy $f"
+          done
+          
+          find "$XCODE" -type d -name "*DDI*" 2>/dev/null | while read d; do
+            mkdir -p "tvos27-ddi/$(echo "$d" | sed 's|/|_|g')"
+            cp -R "$d"/ "tvos27-ddi/$(echo "$d" | sed 's|/|_|g')/" 2>/dev/null || echp "could not copy dir $d"
+          done
+          
+          ls -la tvos27-ddi/
+          du -sh tvos27-ddi/
+
+      - name: Upload tvOS DDI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvOS27-DDI
+          path: tvos27-ddi/
+          if-no-files-found: warn
