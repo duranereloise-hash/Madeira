@@ -40,7 +40,7 @@ jobs:
 
       - name: xcodebuild MadeiraTV
         run: |
-          xcodebuild -project app/MadeiraTV.xcodeproj \
+          xcodebuild -project app/MadeiraTV/MadeiraTV.xcodeproj \
             -scheme MadeiraTV \
             -destination 'generic/platform=tvOS' \
             -configuration Debug \
@@ -51,7 +51,7 @@ jobs:
       - name: Package IPA
         run: |
           APP=$(find build/DerivedData-tv -name "MadeiraTV.app" -type d | head -1)
-          if [ -z "$APP" ]; then echo "no .app — check xcbuild log"; exit 1; fi
+          if [ -z "$APP" ]; then echo "no .app - check xcbuild log"; exit 1; fi
           mkdir -p build/ipa/Payload
           cp -R "$APP" build/ipa/Payload/
           cd build/ipa
