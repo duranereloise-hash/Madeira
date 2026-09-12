@@ -23,19 +23,18 @@ jobs:
 
       - name: Toolchain info
         run: |
+          set -e
           xcodebuild -version
-          # bison + flex + gettext for wine configure; llvm-mingw provides
-          # llvm-dlltool/lld/clang for PE aarch64 cross-compilation.
-          brew install xcodegen bison flex gettext llvm llvm-mingw
+          # bison + flex + gettext for wine configure; lld provides
+          # PE aarch64 cross-linker; check that llvm-dlltool comes with llvm.
+          brew install xcodegen bison flex gettext llvm lld
           echo "/opt/homebrew/opt/bison/bin" >> "$GITHUB_PATH"
           echo "/usr/local/opt/bison/bin" >> "$GITHUB_PATH"
           echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
           echo "/usr/local/opt/llvm/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
           bison --version | head -1
-          xcrun -sdk appletvos -f clang
-          which llvm-dlltool || ls /opt/homebrew/opt/llvm-mingw/bin/ 2>/dev/null | head -10
+          which llvm-dlltool && llvm-dlltool --version | head -1
+          which lld && lld --version | head -1
 
       - name: Fetch StikJITTV.xcframework from release
         run: |
