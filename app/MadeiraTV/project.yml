@@ -1,0 +1,115 @@
+name: MadeiraTV
+options:
+  bundleIdPrefix: com.willfaust
+  deploymentTarget:
+    tvOS: "18.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CLANG_CXX_LANGUAGE_STANDARD: "gnu++20"
+    ENABLE_STRICT_OBJC_MSGSEND: YES
+
+targets:
+  MadeiraTV:
+    type: application
+    platform: tvOS
+    deploymentTarget: "18.0"
+    sources:
+      # Common engine sources (shared with iOS app)
+      - path: Madeira
+        excludes:
+          - "MadeiraApp.swift"
+          - "ContentView.swift"
+          - "StikJITHelper.swift"
+          - "Info.plist"
+          - "Madeira.entitlements"
+          - "Madeira-Bridging-Header.h"
+      # tvOS app sources
+      - path: MadeiraTV
+        excludes:
+          - "Info.plist"
+          - "MadeiraTV.entitlements"
+          - "BUILDING.md"
+      # Resources
+      - path: Madeira/aarch64-windows
+        buildPhase: resources
+      - path: Madeira/arm64ec-windows
+        buildPhase: resources
+      - path: Madeira/x86_64-vcruntime
+        buildPhase: resources
+      - path: Madeira/nls
+        buildPhase: resources
+      - path: Madeira/legal
+        buildPhase: resources
+      - path: Madeira/cacert.pem
+        buildPhase: resources
+      - path: Madeira/prefix-template.tar.gz
+        buildPhase: resources
+    dependencies:
+      - sdk: Metal.framework
+      - sdk: QuartzCore.framework
+      - sdk: GameController.framework
+      - sdk: Security.framework
+      - sdk: Network.framework
+      - sdk: libz.tbd
+      - sdk: libc++.tbd
+      - sdk: libsqlite3.tbd
+      - framework: Vendors/StikJITTV.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.willfaust.madeira-tv
+        PRODUCT_NAME: MadeiraTV
+        INFOPLIST_FILE: MadeiraTV/Info.plist
+        CODE_SIGN_ENTITLEMENTS: MadeiraTV/MadeiraTV.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: "Madeira/Madeira-Bridging-Header.h"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/Madeira"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libntdll_unix.a"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libwineserver.a"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libwin32u_unix.a"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libdxmt_combined.a"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libgnutls.a"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libhogweed.a"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libnettle.a"
+          - -force_load
+          - "$(SRCROOT)/Madeira/libgmp.a"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/FEX/FEXCore/include"
+          - "$(SRCROOT)/FEX/FEXHeaderUtils"
+          - "$(SRCROOT)/FEX/CodeEmitter"
+          - "$(SRCROOT)/FEX/External/fmt/include"
+          - "$(SRCROOT)/FEX/External/range-v3/include"
+          - "$(SRCROOT)/FEX/External/unordered_dense/include"
+          - "$(SRCROOT)/FEX/External/SoftFloat-3e"
+          - "$(SRCROOT)/FEX/build-ios"
+          - "$(SRCROOT)/FEX/build-ios/include"
+          - "$(SRCROOT)/Madeira"
+
+  MadeiraTVHelper:
+    type: app-extension
+    platform: tvOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: MadeiraTVHelper
+    dependencies:
+      - sdk: Network.framework
+      - framework: Vendors/StikJITTV.xcframework
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.willfaust.madeira-tv.helper
+        PRODUCT_NAME: MadeiraTVHelper
+        INFOPLIST_FILE: MadeiraTVHelper/Info.plist
+        SWIFT_OBJC_BRIDGING_HEADER: "Madeira/Madeira-Bridging-Header.h"
