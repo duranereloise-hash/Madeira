@@ -1,4 +1,4 @@
-name: Extract tvOS 27 DeveloperDiskImage (take 2)
+name: Extract tvOS 27 DeveloperDiskImage v2
 
 on:
   workflow_dispatch:
@@ -19,36 +19,27 @@ jobs:
           echo "---"
           echo "Default Xcode: $(xcode-select -p)"
 
-      - name: Search all Xcodes for tvOS 27 DEI
+      - name: Search all Xcodes for tvOS 27 DDI
         run: |
-          XCODES=$(ls -d /Applications/Xcode_26*.app /Applications/Xcode_27*.app /Applications/Xcode_17*.app 2>/dev/null)
-          if [ -z "$XCODES" ]; then
-            echo "N Xcode 26/27/17, trying all Xcode 16+"
-            XCODES=$(ls -d /Applications/Xcode_1[6-9]*.app /Applications/Xcode_2[0-9]*.app 2>/dev/null)
-          fi
-          
-          for XC in $XCODES; do
-            echo "===== Searching: $XC ====="
-            
+          for XC in /Applications/Xcode_26*.app /Applications/Xcode_27*.app /Applications/Xcode_1[7-9]*.app; do
+            [ -d "$XC" ] || continue
+            echo "===== $XC ====="
             echo "--- DeviceSupport ---"
-            find "$XC/Contents/Developer/Platforms/AppleTVOS.platform/DeviceSupport" -maxdepth 1 -type d 2>/dev/null | sort || echo "  non"
-            
-            echo "--- DeveloperDiskImages in Xcode ---"
-            find "$XC/Contents/Developer" -name "DeveloperDiskImage*" -type f 2>/dev/null | head -10 || echo "  none"
-            find "$XC/Contents/Developer" -type d -name "DeveloperDiskImages" 2>/dev/null | head -5 || echo "  no dir"
-            
-            echo "--- PersonalizedImages ---"
-            find "$XC/Contents/Developer" -type d -name "*PersonalizedAppletv" -o -type d -name "*PersonalizedTest" -o -type d -name "*PersonalizedDD" 2>/dev/null | head -10 || echo "  none"
-            find "$XC" -name "\\$().default.defauld" -path "*Personalized*" 2>/dev/null | head -5 || echo "  no cryptexs"
-            
+            find "$XC/Contents/Developer/Platforms/AppleTVOS.platform/DeviceSupport" -maxdepth 1 -type d 2>/dev/null | sort
+            echo "--- DeveloperDiskImage files ---"
+            find "$XC" -name "DeveloperDiskImage*" -type f 2>/dev/null
+            echo "--- DDI directories ---"
+            find "$XC" -type d -name "DeveloperDiskImages" 2>/dev/null
+            echo "--- Personalized directories ---"
+            find "$XC/Contents/Developer" -type d -name "*Personalized*" 2>/dev/null
             echo "--- CoreDevice ---"
-            find "$XC/Contents/Developer" -path "*/CoreDevice/*/default.defauld" -type f 2>/dev/null | head -5 || echo "  none"
-            find "$XC/Contents/Developer" -type d -name "CoreDeviceDeviceDownloads" -o -type d -name "CoreDeviceDI" 2>/dev/null | head -5 || echo "  no core"
-            
-            echo "--- /Library/Developer ---"
-            ls -la /Library/Developer/DeveloperDiskImages/ 2>/dev/null || echo "  empty"
-            
+            find "$XC/Contents/Developer" -path "*/CoreDevice/*" -type d 2>/dev/null | head -5
             echo ""
+          done
+          echo "=== /Library/Developer ==="
+          ls -la /Library/Developer/DeveloperDiskImages/ 2>/dev/null || echo "empty"
+          for d in /Library/Developer/DeveloperDiskImages/*/; do
+            [ -d "$d" ] && echo "  $d" && ls "$d" 2>/dev/null
           done
 
       - name: Capture all DDIs from every Xcode
@@ -56,40 +47,48 @@ jobs:
           mkdir -p tvos27-ddi
           
           for XC in /Applications/Xcode*.app; do
-            if [ ! -d "$XC" ]; then continue; fi
+            [ -d "$XC" ] || continue
             TAG=$(basename "$XC" .app)
-            mkdir -p "tvos27-ddi/${TAG}"
+            mkdir -p "tvos27-ddi/$TAG"
             
-            find "$XC/Contents/Developer/Platforms/AppleTVOS.platform/DeviceSupport" \(
--name "*.dmg" -o -name "*.signature" \) -type f 2>/dev/null | while read f; do
-                cp "$f" "tvos27-ddi/${TAG}/" 2>/dev/null || echo "fail $f"
+            # DeviceSupport (.dmg + .signature)
+            find "$XC/Contents/Developer/Platforms/AppleTVOS.platform/DeviceSupport" \
+              \( -name "*.dmg" -o -name "*.signature" \) -type f 2>/dev/null | while read f; do
+                cp "$f" "tvos27-ddi/$TAG/" 2>/dev/null || true
             done
             
-            find "$XC/Contents/Developer" -name "DeveloperDiskImage*" -type f 2>/dev/null | while read f; do
-                cp "$f" "tvos27-ddi/${TAG_$(basename "$f")" 2>/dev/null || echo "fail $f"
+            # DeveloperDiskImage files anywhere
+            find "$XC" -name "DeveloperDiskImage*" -type f 2>/dev/null | while read f; do
+                cp "$f" "tvos27-ddi/$TAG/" 2>/dev/null || true
             done
             
-            find "$XC/Contents/Developer" -type d -name "DeveloperDiskImages" 2>/dev/null | while read d; do
-                cp -R "$d/" "tvos27-ddi/${TAG}_DeveloperDiskImages/" 2>/dev/null || echo "fail $d"
+            # DeveloperDiskImages directories
+            find "$XC" -type d -name "DeveloperDiskImages" 2>/dev/null | while read d; do
+                cp -R "$d/" "tvos27-ddi/${TAG}_DeveloperDiskImages/" 2>/dev/null || true
             done
             
-            find "$XC/Contents/Developer" -type d -name "*PersonalizedAppletv" -o -type d -name "*PersonalizedDD" 2>/dev/null | while read d; do
-                cp -R "$d/" "tvos27-ddi/${TAG}|$(basename "$d")/" 2>/dev/null || echo "fail $d"
+            # Personalized directories
+            find "$XC/Contents/Developer" -type d -name "*Personalized*" 2>/dev/null | while read d; do
+                cp -R "$d/" "tvos27-ddi/${TAG}_$(basename "$d")/" 2>/dev/null || true
             done
             
-            find "$XC/Contents/Developer" \( -name "*.dmg" -o -name "*.trustcache" -o -name "*.cryptex_info" -o -name "*.root_hash" \) -path "*DeveloperDiskImages*" 2>/dev/null | while read f; do
-                cp "$f" "tvos27-ddi/${TAG}/" 2>/dev/null || echo "fail $f"
+            # Any dmg/trustcache/cryptex_info/root_hash in DDI paths
+            find "$XC/Contents/Developer" \
+              \( -name "*.dmg" -o -name "*.trustcache" -o -name "*.cryptex_info" -o -name "*.root_hash" \) \
+              -path "*DDI*" -type f 2>/dev/null | while read f; do
+                cp "$f" "tvos27-ddi/$TAG/" 2>/dev/null || true
             done
           done
           
+          # /Library/Developer/DeveloperDiskImages
           cp -R /Library/Developer/DeveloperDiskImages/ tvos27-ddi/Library_DeveloperDiskImages/ 2>/dev/null || echo "no lib ddri"
           
           echo "=== RESULT ==="
           find tvos27-ddi -type f | sort
-          echo "--- size ---"
+          echo "--- total size ---"
           du -sh tvos27-ddi
 
-      - name: Upload tvOS DEI artifacts
+      - name: Upload tvOS DDI artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tvOS27-DDI-v2
