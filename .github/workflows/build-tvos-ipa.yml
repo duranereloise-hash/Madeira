@@ -65,12 +65,16 @@ jobs:
       - name: Wine build (make)
         run: |
           set -e
-          cd wine/build-macos
+          cd wine
+          # Apply iOS patches before building
+          for p in "${{ github.workspace }}"/patches/*.patch; do
+            echo "Applying $(basename $p)..."
+            patch -p1 < "$p" 2>&1 || echo "(skipping $p)"
+          done
+          cd build-macos
           make -j4 > /tmp/wine-make.log 2>&1 || (tail -60 /tmp/wine-make.log && exit 1)
           echo "--- base libs produced ---"
           find . -name "*.a" | head -30
-          ls server/libwineserver.a 2>/dev/null || echo "(server lib under magnet?)"
-          find . -name "libwineserver.a" -o -name "libntdll.a" -o -name "libwin32u.a" | head
 
       # Convert iOS build scripts to appletvos and build the unix static libs.
       - name: Build Wine unix libs (appletvos)
