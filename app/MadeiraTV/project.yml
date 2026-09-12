@@ -42,8 +42,6 @@ targets:
         buildPhase: resources
       - path: ../Madeira/arm64ec-windows
         buildPhase: resources
-      - path: ../Madeira/x86_64-vcruntime
-        buildPhase: resources
       - path: ../Madeira/nls
         buildPhase: resources
       - path: ../Madeira/legal
