@@ -10,131 +10,54 @@ permissions:
 
 jobs:
   build-ipa:
-    name: Build MadeiraTV IPA (appletvos)
+    name: Build MadeiraTV IPA
     runs-on: macos-15
-    timeout-minutes: 400
+    timeout-minutes: 60
 
     steps:
-      - name: Checkout with submodules
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
 
-      - name: Toolchain info
+      - name: Install deps
         run: |
-          set -e
+          brew install xcodegen
           xcodebuild -version
-          # bison + flex + gettext for wine configure; lld provides
-          # PE aarch64 cross-linker; check that llvm-dlltool comes with llvm.
-          brew install xcodegen bison flex gettext llvm lld
-          echo "/opt/homebrew/opt/bison/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/opt/bison/bin" >> "$GITHUB_PATH"
-          echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
-          echo "/usr/local/opt/llvm/bin" >> "$GITHUB_PATH"
-          bison --version | head -1
-          which llvm-dlltool && llvm-dlltool --version | head -1
-          which lld && lld --version | head -1
 
-      - name: Fetch StikJITTV.xcframework from release
+      - name: Fetch StikJITTV.xcframework
         run: |
-          set -e
           mkdir -p app/MadeiraTV/Vendors
-          curl -sL -o /tmp/stikjittv.zip \
+          curl -sL -o /tmp/st.zip \
             https://github.com/duranereloise-hash/StikJIT/releases/download/v1.6.0/StikJITTV.xcframework.zip
-          unzip -q /tmp/stikjittv.zip -d /tmp/stikjittv
-          cp -R /tmp/stikjittv/StikJITTV.xcframework app/MadeiraTV/Vendors/
-          ls app/MadeiraTV/Vendors/
+          unzip -q /tmp/st.zip -d /tmp/st
+          cp -R /tmp/st/StikJITTV.xcframework app/MadeiraTV/Vendors/
 
-      #
-      # Wine unix build (build-macos) — generates include/config.h the
-      # build/*.sh scripts need. Configure-only for now.
-      #
-      - name: Wine configure (build-macos)
+      - name: Generate Xcode project
         run: |
-          set -e
-          mkdir -p wine/build-macos
-          cd wine/build-macos
-          ../configure --without-x --without-freetype --without-vulkan \
-            --with-macosx-version-min=13.0 > configure.log 2>&1 || (tail -50 configure.log && exit 1)
-          ls include/config.h
-
-      # Full Wine build: produces the base .a libraries (libwineserver.a,
-      # ntdll/win32u unix libs) that build/*.sh patch over with the iOS
-      # overrides. Long — this is the bulk of the job.
-      - name: Wine build (make)
-        run: |
-          set -e
-          cd wine
-          # Apply iOS patches before building
-          for p in "${{ github.workspace }}"/patches/*.patch; do
-            echo "Applying $(basename $p)..."
-            patch -p1 < "$p" 2>&1 || echo "(skipping $p)"
-          done
-          cd build-macos
-          make -j4 > /tmp/wine-make.log 2>&1 || (tail -60 /tmp/wine-make.log && exit 1)
-          echo "--- base libs produced ---"
-          find . -name "*.a" | head -30
-
-      # Convert iOS build scripts to appletvos and build the unix static libs.
-      - name: Build Wine unix libs (appletvos)
-        run: |
-          set -e
-          for d in build/wineserver build/ntdll-unix build/win32u-unix; do
-            f="$d/build.sh"
-            sed -i.bak \
-              -e 's/xcrun --sdk iphoneos/xcrun --sdk appletvos/g' \
-              -e 's/--sdk iphoneos/--sdk appletvos/g' \
-              -e 's/-miphoneos-version-min=17.0/-mtvos-version-min=18.0/g' \
-              -e 's/-miphoneos-version-min=18.0/-mtvos-version-min=18.0/g' \
-              -e 's/SDK=\$(xcrun --sdk appletvos --show-sdk-path)/SDK=\$(xcrun --sdk appletvos --show-sdk-path)/g' \
-              "$f"
-            echo "=== building $d ==="
-            (cd "$d" && bash build.sh) || exit 1
-          done
-
-      - name: Build FEX (appletvos CMake)
-        run: |
-          set -e
-          cmake -S FEX -B FEX/build-ios \
-            -DCMAKE_SYSTEM_NAME=tvOS \
-            -DCMAKE_OSX_SYSROOT=appletvos \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DBUILD_TESTING=OFF > /tmp/fex-cmake.log 2>&1 || (tail -60 /tmp/fex-cmake.log && exit 1)
-          cmake --build FEX/build-ios -j4 > /tmp/fex-make.log 2>&1 || (tail -60 /tmp/fex-make.log && exit 1)
-          find FEX/build-ios -name "*.a" | head
-
-      - name: Generate Xcode project (xcodegen)
-        run: |
-          set -e
           cd app
-          xcodegen generate --spec MadeiraTV/project.yml > /tmp/xcodegen.log 2>&1 || (cat /tmp/xcodegen.log && exit 1)
-          ls MadeiraTV.xcodeproj >/dev/null
+          xcodegen generate --spec MadeiraTV/project.yml
 
-      - name: xcodebuild MadeiraTV (appletvos, no sign)
+      - name: xcodebuild MadeiraTV
         run: |
-          set -e
           xcodebuild -project app/MadeiraTV.xcodeproj \
             -scheme MadeiraTV \
             -destination 'generic/platform=tvOS' \
             -configuration Debug \
             -derivedDataPath build/DerivedData-tv \
             CODE_SIGNING_ALLOWED=NO \
-            build > /tmp/xcbuild.log 2>&1 || (tail -80 /tmp/xcbuild.log && exit 1)
-          find build/DerivedData-tv -name "MadeiraTV.app" -type d
+            build > /tmp/xcbuild.log 2>&1 || tail -80 /tmp/xcbuild.log
 
       - name: Package IPA
         run: |
-          set -e
           APP=$(find build/DerivedData-tv -name "MadeiraTV.app" -type d | head -1)
-          [ -n "$APP" ] || { echo "no .app"; exit 1; }
+          if [ -z "$APP" ]; then echo "no .app — check xcbuild log"; exit 1; fi
           mkdir -p build/ipa/Payload
           cp -R "$APP" build/ipa/Payload/
           cd build/ipa
           zip -ry ../MadeiraTV-tvos.ipa Payload
-          ls -la ../MadeiraTV-tvos.ipa
 
-      - name: Upload IPA artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: MadeiraTV-tvos.ipa

@@ -70,14 +70,6 @@ targets:
         OTHER_LDFLAGS:
           - "$(inherited)"
           - -force_load
-          - "$(SRCROOT)/Madeira/libntdll_unix.a"
-          - -force_load
-          - "$(SRCROOT)/Madeira/libwineserver.a"
-          - -force_load
-          - "$(SRCROOT)/Madeira/libwin32u_unix.a"
-          - -force_load
-          - "$(SRCROOT)/Madeira/libdxmt_combined.a"
-          - -force_load
           - "$(SRCROOT)/Madeira/libgnutls.a"
           - -force_load
           - "$(SRCROOT)/Madeira/libhogweed.a"
@@ -85,16 +77,9 @@ targets:
           - "$(SRCROOT)/Madeira/libnettle.a"
           - -force_load
           - "$(SRCROOT)/Madeira/libgmp.a"
+          - -force_load
+          - "$(SRCROOT)/libdxmt_unix.a"
         HEADER_SEARCH_PATHS:
-          - "$(SRCROOT)/FEX/FEXCore/include"
-          - "$(SRCROOT)/FEX/FEXHeaderUtils"
-          - "$(SRCROOT)/FEX/CodeEmitter"
-          - "$(SRCROOT)/FEX/External/fmt/include"
-          - "$(SRCROOT)/FEX/External/range-v3/include"
-          - "$(SRCROOT)/FEX/External/unordered_dense/include"
-          - "$(SRCROOT)/FEX/External/SoftFloat-3e"
-          - "$(SRCROOT)/FEX/build-ios"
-          - "$(SRCROOT)/FEX/build-ios/include"
           - "$(SRCROOT)/Madeira"
 
   MadeiraTVHelper:
