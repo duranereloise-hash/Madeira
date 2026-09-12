@@ -24,12 +24,15 @@ jobs:
       - name: Toolchain info
         run: |
           xcodebuild -version
-          brew install xcodegen bison flex gettext || true
+          brew install xcodegen bison flex gettext llvm || true
           # macOS ships a very old bison; Wine configure needs >= 3.0.
-          # brew installs bison as keg-only — put it on PATH.
+          # brew installs bison + llvm as keg-only — put them on PATH.
           echo "/opt/homebrew/opt/bison/bin" >> "$GITHUB_PATH"
           echo "/usr/local/opt/bison/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/opt/llvm/bin" >> "$GITHUB_PATH"
           bison --version | head -1
+          llvm-dlltool --version | head -1 || true
 
       - name: Fetch StikJITTV.xcframework from release
         run: |
