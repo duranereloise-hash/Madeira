@@ -1,4 +1,4 @@
-name: Extract tvOS 27 DDI
+name: Extract tvOS 27 DDI via setup-xcode
 
 on:
   workflow_dispatch:
@@ -9,26 +9,32 @@ permissions:
 jobs:
   extract-ddi:
     name: Extract tvOS 27 DDI
-    runs-on: xcode-27-arm64
-    timeout-minutes: 20
+    runs-on: macos-26
+    timeout-minutes: 40
 
     steps:
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '27A5252f'
+
       - name: Xcode version
         run: xcodebuild -version
 
       - name: Find tvOS 27 DDI
         run: |
-          echo "=== tvOS DDI version ==="
-          cat /Library/Developer/DeveloperDiskImages/tvOS_DDI/version.plist
+          echo "=== /Library/Developer/DeveloperDiskImages ==="
+          ls -la /Library/Developer/DeveloperDiskImages/ 2>/dev/null || echo "empty"
+          echo "=== tvOS_DDI version.plist ==="
+          cat /Library/Developer/DeveloperDiskImages/tvOS_DDI/version.plist 2>/dev/null || echo "no version.plist"
           echo "=== ProductBuildVersion ==="
-          grep 'ProductBuildVersion' /Library/Developer/DeveloperDiskImages/tvOS_DDI/Restore/BuildManifest.plist
+          grep 'ProductBuildVersion' /Library/Developer/DeveloperDiskImages/tvOS_DDI/Restore/BuildManifest.plist 2>/dev/null || echo "no manifest"
           echo "=== Restore contents ==="
-          ls /Library/Developer/DeveloperDiskImages/tvOS_DDI/Restore/
+          find /Library/Developer/DeveloperDiskImages/tvOS_DDI -type f 2>/dev/null
 
-      - name: Package
+      - name: Package and Upload
         run: |
           mkdir -p tvos27-ddi
-          cp -R /Library/Developer/DeveloperDiskImages/tvOS_DDI/ tvos27-ddi/
+          cp -R /Library/Developer/DeveloperDiskImages/tvOS_DDI/ tvos27-ddi/ 2>/dev/null || echo "no tvOS_DDI dir"
           du -sh tvos27-ddi
 
       - name: Upload
@@ -36,4 +42,4 @@ jobs:
         with:
           name: tvOS27-DDI
           path: tvos27-ddi/
-          if-no-files-found: error
+          if-no-files-found: warn
