@@ -1,0 +1,56 @@
+name: Extract tvOS 27 DDI from Xcode 27
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extract-ddi:
+    name: Extract tvOS 27 DDI
+    runs-on: macos-27
+    timeout-minutes: 20
+
+    steps:
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Find tvOS 27 DDI in Xcode
+        run: |
+          XCODE=$(xcode-select -p | sed 's|/Contents/Developer||')
+          echo "Xcode: $XCODE"
+
+          echo "=== /Library/Developer/DeveloperDiskImages ==="
+          ls -la /Library/Developer/DeveloperDiskImages/ 2>/dev/null || echo "empty"
+          for d in /Library/Developer/DeveloperDiskImages/tvOS_DDI/Restore/; do
+            [ -d "$d" ] && echo "--- tvOS_DDI Restore ---" && ls "$d" 2>/dev/null
+          done
+
+          echo "=== Xcode CoreDevice/original DDI ==="
+          find "$XCODE" -path "*/CoreDevice/CandidateDDIs/*" -type f -name "*tv*" 2>/dev/null
+          find "$XCODE" -path "*/DeveloperDiskImages/tvOS_DDI" -type d 2>/dev/null
+
+          echo "=== Build version ==="
+          cat /Library/Developer/DeveloperDiskImages/tvOS_DDI/version.plist 2>/dev/null || echo "no version.plist"
+
+          echo "=== ProductBuildVersion from manifest ==="
+          grep ProductBuildVersion /Library/Developer/DeveloperDiskImages/tvOS_DDI/Restore/BuildManifest.plist 2>/dev/null || echo "no manifest"
+
+      - name: Package DDI
+        run: |
+          mkdir -p tvos27-ddi
+          cp -R /Library/Developer/DeveloperDiskImages/ tvos27-ddi/ 2>/dev/null || echo "no library ddi"
+          XCODE=$(xcode-select -p | sed 's|/Contents/Developer||')
+          find "$XCODE" -name "tvOS_DDI.dmg" -type f 2>/dev/null | while read f; do
+            cp "$f" tvos27-ddi/
+          done
+          find tvos27-ddi -type f | sort
+          du -sh tvos27-ddi
+
+      - name: Upload tvOS 27 DDI
+        uses: actions/upload-artifact@v4
+        with:
+          name: tvOS27-DDI-from-Xcode27
+          path: tvos27-ddi/
+          if-no-files-found: warn
